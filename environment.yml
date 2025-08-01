@@ -1,0 +1,11 @@
+name: outfit
+dependencies:
+  - python
+  - pip
+  - pip:
+    - python-dotenv
+    - requests
+    - numpy
+    - pyarrow
+    - pandas
+    - wxpython
