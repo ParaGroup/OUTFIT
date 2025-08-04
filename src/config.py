@@ -6,3 +6,5 @@ curve_A_filename            = "curve_A.csv"
 USE_PYARROW = False
 PRINT_INFO = False
 DUMP_RESULTS = False
+
+SCHEDULE_PREFIX="outfit_"
