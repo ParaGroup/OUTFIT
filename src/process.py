@@ -2,7 +2,7 @@ import os
 import sys
 import argparse
 from process_functions import *
-from datetime import datetime, timedelta
+from datetime import datetime
 
 
 attenuation_matrix_filename = ""
@@ -68,8 +68,11 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if not os.path.isfile(args.matrix):
-        logging.error(f"The Noise Attenuation matrix does not exists: {args.matrix}")
-        sys.exit(2)
+        try:
+            merge_file(args.matrix)
+        except FileNotFoundError:
+            logging.error(f"The Noise Attenuation matrix does not exists: {args.matrix}")
+            sys.exit(2)
     else:
         attenuation_matrix_filename = str(args.matrix)
 

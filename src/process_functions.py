@@ -9,7 +9,7 @@ import pandas as pd
 #
 #------------------------------------------------------------------------------
 
-ID_JOIN = 'osm_id' # osm_id per Pisa, id per Brindisi?
+ID_JOIN = 'id' # osm_id per Pisa, id per Brindisi
 freqs = [f'{freq}' for freq in [63, 125, 250, 500, 1000, 2000, 4000, 8000]]
 
 f1_coeff = 1.0 # f1: light vehicles
@@ -54,7 +54,7 @@ def preprocess_street_params(
 
     # Normalize each f-column
     for k in coeffs:
-        df[k] = df[k] * coeffs[k] / weight_sum # TODO: check if this line is correct
+        df[k] = df[k] / weight_sum
 
     # Melt the DataFrame
     id_vars = ['highway', 'capacity', 'free_speed', 'daytime', 'alpha', 'beta']
@@ -242,7 +242,6 @@ def noise_attenuation(
     
     merged.drop(columns=[f'{f}_r' for f in freqs])
     return merged
-
 
 @timer
 def energetic_sum(

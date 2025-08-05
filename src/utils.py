@@ -6,6 +6,7 @@ import os
 import csv
 import logging
 import time
+import glob
 from datetime import datetime
 import pandas as pd
 
@@ -99,14 +100,55 @@ def timer(func):
 #
 #------------------------------------------------------------------------------
 
+def remove_extension(filename):
+    filename, _ = os.path.splitext(filename)
+    return filename
+
 def replace_extension(filename, new_ext):
     _, ext = os.path.splitext(filename)
     return filename.replace(ext, new_ext)
 
+def split_file(input_filename, part_size = 42):
+    """
+    Splits the file at 'input_filename' into parts of size 'part_size' bytes.
+    Each part will be named as {filename}.part{n:03d}
+    """
+    part_size_mb = part_size * 1024 * 1024
+    # filename = os.path.basename(input_filename)
+    filename = remove_extension(input_filename)
+    with open(input_filename, 'rb') as f:
+        part_num = 0
+        while True:
+            chunk = f.read(part_size_mb)
+            if not chunk:
+                break
+            part_filename = f"{filename}.part{part_num:03d}"
+            with open(part_filename, 'wb') as pf:
+                pf.write(chunk)
+            part_num += 1
+    print(f"File '{filename}' split into {part_num} parts.")
+
+def merge_file(output_filename):
+    """
+    Merges parts named {output_filename}.part{n:03d} from 'directory'
+    into a single file with the name 'output_filename'.
+    """
+    filename = remove_extension(output_filename)
+    part_pattern = f"{filename}.part*"
+    parts = sorted(glob.glob(part_pattern))
+
+    if not parts:
+        raise FileNotFoundError("No parts found to merge.")
+
+    with open(output_filename, 'wb') as outfile:
+        for part in parts:
+            with open(part, 'rb') as pf:
+                outfile.write(pf.read())
+    print(f"Merged {len(parts)} parts into '{output_filename}'.")
+
 @timer
 def read_json_file(filename):
     return pd.read_json(filename)
-
 
 @timer
 def read_csv_file(filename):
@@ -114,13 +156,11 @@ def read_csv_file(filename):
         return pd.read_csv(filename, engine="pyarrow")
     return pd.read_csv(filename)
 
-
 @timer
 def read_parquet_file(filename):
     if USE_PYARROW:
         return pd.read_parquet(filename, engine="pyarrow")
     return pd.read_parquet(filename)
-
 
 def read_file(filename, base_dir=None):
     filepath = os.path.join(base_dir, filename) if base_dir else filename
@@ -133,10 +173,9 @@ def read_file(filename, base_dir=None):
         return read_parquet_file(filepath)
     raise ValueError("Unknown file format")
 
-
 @timer
 def write_csv_file(df, filename):
-    df.to_csv(filename, index=False, quoting=csv.QUOTE_STRINGS)
+    df.to_csv(filename, index=False, quoting=csv.QUOTE_STRINGS, decimal=".")
 
 @timer
 def write_json_file(df, filename):
