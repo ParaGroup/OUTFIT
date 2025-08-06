@@ -1,3 +1,9 @@
+"""
+Authors: Pasquale Gorrasi & Alberto Ottimo
+Project: OUTFIT
+Date: 2025-07-25
+"""
+
 from config import *
 import platform
 import subprocess
@@ -7,6 +13,9 @@ import csv
 import logging
 import time
 import glob
+from pathlib import Path
+from enum import Enum
+from dotenv import load_dotenv, set_key, unset_key
 from datetime import datetime
 import pandas as pd
 
@@ -41,6 +50,16 @@ def generate_output_filename(dir:str, prefix: str, now: datetime) -> str:
     filename = f"{prefix}-{timestamp}.csv"
     return os.path.join(dir, filename)
 
+def get_api_output_dirpath(prefix: str = ""):
+    env = EnvManager()
+    data_filepath = str(env.get(Env.DATA_FILEPATH))
+    data_dirname = os.path.dirname(data_filepath)
+    return os.path.join(data_dirname, prefix, API_OUTPUT_DIRNAME)
+
+def get_current_exe_filepath():
+    if getattr(sys, 'frozen', False):
+        return sys._MEIPASS
+    return os.path.dirname(os.path.abspath(__file__))
 
 #------------------------------------------------------------------------------
 #
@@ -188,21 +207,56 @@ def write_parquet_file(df, filename):
 
 #------------------------------------------------------------------------------
 #
+# .env Manager
+#
+#------------------------------------------------------------------------------
+
+class Env(Enum):
+    API_KEY = "API_KEY"
+    PREFIX = "PREFIX"
+    DATA_FILEPATH = "DATA_FILEPATH"
+    TIMESTAMP_FROM = "TIMESTAMP_FROM"
+    TIMESTAMP_TO = "TIMESTAMP_TO"
+    INTERVAL = "INTERVAL"
+
+class EnvManager:
+    def __init__(self, filepath=".env"):
+        self.filepath = Path(filepath)
+        self.filepath.touch(exist_ok=True)
+        load_dotenv(dotenv_path=self.filepath, override=True)
+
+    def get(self, field: Env, default=None):
+        return os.getenv(field.value, default)
+
+    def set(self, field: Env, value: str):
+        set_key(str(self.filepath), field.value, value)
+
+    def delete(self, field: Env):
+        unset_key(str(self.filepath), field.value)
+
+#------------------------------------------------------------------------------
+#
 # Schedule script
 #
 #------------------------------------------------------------------------------
 
-# def schedule_on_unix(script_path, args, interval_minutes, prefix=SCHEDULE_PREFIX):
-#     job_name = f"{prefix}{int(datetime.now().timestamp())}"
-#     cron_expr = f"*/{interval_minutes} * * * *"
-#     cron_command = f"{cron_expr} {sys.executable} {script_path} {' '.join(args)} # {job_name}"
+def is_unix() -> bool:
+    return platform.system() in ["Linux", "Darwin"]
 
-#     result = subprocess.run("crontab -l", shell=True, capture_output=True, text=True)
-#     existing_crontab = result.stdout if result.returncode == 0 else ""
+def is_windows() -> bool:
+    return platform.system() == "Windows"
 
-#     new_crontab = existing_crontab + "\n" + cron_command + "\n"
-#     subprocess.run(f"(echo '{new_crontab}') | crontab -", shell=True)
-#     print(f"Cron job scheduled every {interval_minutes} minutes on Unix.")
+def schedule_on_unix(script_path, args, interval_minutes, prefix=SCHEDULE_PREFIX):
+    job_name = f"{prefix}{int(datetime.now().timestamp())}"
+    cron_expr = f"*/{interval_minutes} * * * *"
+    cron_command = f"{cron_expr} {sys.executable} {script_path} {' '.join(args)} # {job_name}"
+
+    result = subprocess.run("crontab -l", shell=True, capture_output=True, text=True)
+    existing_crontab = result.stdout if result.returncode == 0 else ""
+
+    new_crontab = existing_crontab + "\n" + cron_command + "\n"
+    subprocess.run(f"(echo '{new_crontab}') | crontab -", shell=True)
+    print(f"Cron job scheduled every {interval_minutes} minutes on Unix.")
 
 def schedule_on_windows(script_path, args, start_dt, end_dt, interval_minutes, prefix=SCHEDULE_PREFIX):
     import shutil
@@ -217,38 +271,54 @@ def schedule_on_windows(script_path, args, start_dt, end_dt, interval_minutes, p
     start_date = start_dt.strftime("%m/%d/%Y")
     end_date = end_dt.strftime("%m/%d/%Y")
 
-    argument_str = ' '.join(args)
-    full_cmd = f'"{sys.executable}" "{script_path}" {argument_str}'
+    # Properly quote each argument
+    quoted_args = ' '.join(f'"{arg}"' for arg in args)
+    # Wrap entire command in escaped quotes
+    full_cmd = f'"{sys.executable}" "{script_path}" {quoted_args}'
+    full_cmd = f'"{full_cmd}"'  # Important: wrap entire command in quotes for /TR
 
-    create_cmd = (
-        f'schtasks /Create /TN "{task_name}" /TR {full_cmd} /SC MINUTE /MO {interval_minutes} '
-        f'/ST {start_time} /SD {start_date} /ED {end_date} /F'
-    )
+    # Build schtasks command
+    create_cmd = [
+        "schtasks",
+        "/Create",
+        "/TN", task_name,
+        "/TR", full_cmd,
+        "/SC", "MINUTE",
+        "/MO", str(interval_minutes),
+        "/ST", start_time,
+        "/SD", start_date,
+        "/ED", end_date,
+        "/F",
+        "/RL", "LIMITED"
+    ]
 
-    subprocess.run(create_cmd, shell=True, check=True)
-    print(f"Windows task scheduled every {interval_minutes} minutes.")
+    try:
+        subprocess.run(create_cmd, check=True)
+        print(f"Windows task '{task_name}' scheduled successfully.")
+    except subprocess.CalledProcessError as e:
+        print("Failed to schedule task:", e)
 
 def schedule_script(script_path, script_args, start_dt, end_dt, interval_minutes, prefix=SCHEDULE_PREFIX):
-    if platform.system() in ["Linux", "Darwin"]:
+    if is_unix():
         # schedule_on_unix(script_path, script_args, interval_minutes, prefix)
         raise NotImplementedError("Linux and Darwin are not supported yet!")
-    elif platform.system() == "Windows":
+    elif is_windows():
         schedule_on_windows(script_path, script_args, start_dt, end_dt, interval_minutes, prefix)
     else:
         raise NotImplementedError("Unsupported OS")
     
-# def remove_cron_jobs_with_prefix(prefix=SCHEDULE_PREFIX):
-#     result = subprocess.run("crontab -l", shell=True, capture_output=True, text=True)
-#     if result.returncode != 0:
-#         print("No crontab found.")
-#         return
+def remove_cron_jobs_with_prefix(prefix=SCHEDULE_PREFIX):
+    result = subprocess.run("crontab -l", shell=True, capture_output=True, text=True)
+    if result.returncode != 0:
+        print("No crontab found.")
+        return
 
-#     lines = result.stdout.strip().splitlines()
-#     filtered_lines = [line for line in lines if f"# {prefix}" not in line]
+    lines = result.stdout.strip().splitlines()
+    filtered_lines = [line for line in lines if f"# {prefix}" not in line]
 
-#     updated_crontab = "\n".join(filtered_lines)
-#     subprocess.run(f"(echo '{updated_crontab}') | crontab -", shell=True)
-#     print(f"Removed cron jobs with prefix '{prefix}'")
+    updated_crontab = "\n".join(filtered_lines)
+    subprocess.run(f"(echo '{updated_crontab}') | crontab -", shell=True)
+    print(f"Removed cron jobs with prefix '{prefix}'")
 
 def remove_windows_tasks_with_prefix(prefix=SCHEDULE_PREFIX):
     result = subprocess.run('schtasks /Query /FO LIST /V', capture_output=True, text=True, shell=True)
@@ -268,10 +338,10 @@ def remove_windows_tasks_with_prefix(prefix=SCHEDULE_PREFIX):
     print(f"Removed scheduled tasks with prefix '{prefix}'")
 
 def remove_schedule(prefix=SCHEDULE_PREFIX):
-    if platform.system() in ["Linux", "Darwin"]:
+    if is_unix():
         # remove_cron_jobs_with_prefix(prefix)
         raise NotImplementedError("Linux and Darwin are not supported yet!")
-    elif platform.system() == "Windows":
+    elif is_windows():
         remove_windows_tasks_with_prefix(prefix)
     else:
         raise NotImplementedError("Unsupported OS")

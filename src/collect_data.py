@@ -10,7 +10,6 @@ import argparse
 from datetime import datetime
 import requests
 import pandas as pd
-from dotenv import load_dotenv
 from utils import *
 
 def parse_args():
@@ -19,19 +18,9 @@ def parse_args():
     """
     parser = argparse.ArgumentParser(description="Collect data using Google Directions API.")
     parser.add_argument('-i', '--input',  required=True,  help="Path to input CSV file.")
-    parser.add_argument('-d', '--dir',    required=False, help="Specify the directory to store the output CSV file.", default="")
+    parser.add_argument('-o', '--output', required=False, help="Specify the directory to store the output CSV file.", default="")
     parser.add_argument('-p', '--prefix', required=True,  help="Prefix name of output CSV file.")
     return parser.parse_args()
-
-def load_api_key() -> str:
-    """
-    Load Google Maps API key from .env file.
-    """
-    load_dotenv()
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise ValueError("Google API key not found. Make sure .env contains GOOGLE_API_KEY.")
-    return api_key
 
 def call_directions_api(origin: str, destination: str, api_key: str) -> tuple[int, int, int]:
     """
@@ -63,14 +52,12 @@ def call_directions_api(origin: str, destination: str, api_key: str) -> tuple[in
         return 1, 1, 1
 
 
-def enrich_with_directions(df: pd.DataFrame, now: datetime) -> pd.DataFrame:
+def enrich_with_directions(api_key: str, df: pd.DataFrame, now: datetime) -> pd.DataFrame:
     """
     Enrich the DataFrame `df` with distance (m), duration (s), and speed (km/h).
     """
     if 'xy_start' not in df.columns or 'xy_end' not in df.columns:
         raise ValueError("`df` must contain 'xy_start' and 'xy_end' columns.")
-
-    api_key = load_api_key()
     
     hour = int(now.strftime('%H'))
     # Initialize new columns
@@ -95,34 +82,46 @@ def enrich_with_directions(df: pd.DataFrame, now: datetime) -> pd.DataFrame:
 
     return df
 
+def collect_data(
+        input_filepath: str,
+        output_dirpath: str,
+        prefix: str,
+        now: datetime
+        ):
+    if not os.path.isfile(input_filepath):
+        logging.error(f"The input file does not exist: {input_filepath}")
+        sys.exit(1)
+
+    if not os.path.isdir(output_dirpath):
+        logging.error(f"The output directory does not exist: {output_dirpath}")
+        sys.exit(2)
+
+    if not (prefix and prefix.strip()):
+        logging.error(f'The prefix has not been specified.')
+        sys.exit(3)
+
+    env = EnvManager()
+    api_key = str(env.get(Env.API_KEY))
+    if not (api_key and api_key.strip()):
+        logging.error(f"The API_KEY is not set!")
+        sys.exit(4)
+
+    try:
+        output_filename = generate_output_filename(output_dirpath, prefix, now)
+
+        logging.info(f"Processing started: input={input_filepath}, output={output_filename}")
+        input_df = read_file(input_filepath)
+        output_df = enrich_with_directions(api_key, input_df, now)
+        write_csv_file(output_df, output_filename)
+
+    except Exception as e:
+        logging.error("Fatal error occurred: {e}")
+        raise
+
 
 if __name__ == "__main__":
     now = datetime.now()
     setup_logging('collect', now)
 
     args = parse_args()
-
-    if not os.path.isfile(args.input):
-        logging.error(f"The input file does not exist: {args.input}")
-        sys.exit(1)
-
-    if not (args.prefix and args.prefix.strip()):
-        logging.error(f'The prefix has not been specified.')
-        sys.exit(2)
-
-    if not os.path.isdir(args.dir):
-        logging.error(f"The output directory does not exist: {args.dir}")
-        sys.exit(3)
-
-    try:
-        input_filename = args.input
-        output_filename = generate_output_filename(args.dir, args.prefix, now)
-
-        logging.info(f"Processing started: input={input_filename}, output={output_filename}")
-        input_df = read_file(input_filename)
-        output_df = enrich_with_directions(input_df, now)
-        write_csv_file(output_df, output_filename)
-
-    except Exception as e:
-        logging.error("Fatal error occurred: {e}")
-        raise
+    collect_data(args.input, args.output, args.prefix, now)

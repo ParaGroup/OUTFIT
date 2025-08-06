@@ -1,24 +1,41 @@
-import wx
-import wx.grid as gridlib
-import wx.adv
-import pandas as pd
-import os
-from datetime import datetime
-from dotenv import load_dotenv, set_key
-from utils import schedule_script, remove_schedule
+"""
+Authors: Alberto Ottimo
+Project: OUTFIT
+Date: 2025-08-06
+"""
 
-API_KEY_FIELD = "GOOGLE_API_KEY"
-PREFIX_FIELD = 'PREFIX'
-ENV_FILE = ".env"
+import wx
+import wx.adv
+import wx.grid
+import os
+import argparse
+import pandas as pd
+from datetime import datetime
+from utils import *
+from collect_data import collect_data
+
 INITIAL_SLIDER_VALUE = 10
+
+
+def get_datetime_from_str(timestamp_str):
+    if timestamp_str:
+        return datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+    return datetime.now()
+
+def get_timestamp_str_from_date_time(date, time):
+    date_str = date.FormatISODate()
+    time_str = time.Format("%H:%M:%S")
+    return f"{date_str} {time_str}"
+
 
 class SchedulerFrame(wx.Frame):
     def __init__(self):
-        super().__init__(None, title="Scheduler GUI", size=(800, 600))
+        super().__init__(None, title="OUTFIT", size=(1024, 768))
+        self.Bind(wx.EVT_CLOSE, self.on_close)
+        self.Bind(wx.EVT_SHOW, self.on_open)
+
         self.panel = wx.Panel(self)
         self.last_dir = os.getcwd()
-
-        self.load_env()
 
         font_size = 16
         font = wx.Font(font_size, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL)
@@ -33,8 +50,6 @@ class SchedulerFrame(wx.Frame):
         form_sizer.Add(api_label, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
         self.api_txt = wx.TextCtrl(self.panel, style=wx.TE_PROCESS_ENTER)
         self.api_txt.SetFont(font)
-        self.api_txt.SetValue(self.api_key)
-        self.api_txt.Bind(wx.EVT_KILL_FOCUS, self.save_api_key)
         form_sizer.Add(self.api_txt, 1, wx.EXPAND)
 
         # Prefix
@@ -43,8 +58,6 @@ class SchedulerFrame(wx.Frame):
         form_sizer.Add(prefix_label, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
         self.prefix_txt = wx.TextCtrl(self.panel)
         self.prefix_txt.SetFont(font)
-        self.prefix_txt.SetValue(self.prefix)
-        self.prefix_txt.Bind(wx.EVT_KILL_FOCUS, self.save_prefix)
         form_sizer.Add(self.prefix_txt, 1, wx.EXPAND)
 
         # Data File Input with Browse
@@ -54,43 +67,45 @@ class SchedulerFrame(wx.Frame):
         data_input_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.data_txt = wx.TextCtrl(self.panel)
         self.data_txt.SetFont(font)
+        self.data_txt.Bind(wx.EVT_TEXT, self.on_data_txt_change)
         data_input_sizer.Add(self.data_txt, 1, wx.RIGHT, 5)
         browse_btn = wx.Button(self.panel, label="Browse")
         browse_btn.SetFont(font)
         browse_btn.Bind(wx.EVT_BUTTON, self.on_browse)
         data_input_sizer.Add(browse_btn, 0)
-        form_sizer.Add(data_input_sizer, 1, wx.EXPAND)
+        form_sizer.Add(data_input_sizer, 1, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
 
         # Start & End Date
-        date_label = wx.StaticText(self.panel, label="Date Range")
-        date_label.SetFont(font)
-        form_sizer.Add(date_label, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
-        date_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        if True: #is_windows():
+            date_label = wx.StaticText(self.panel, label="Date Range")
+            date_label.SetFont(font)
+            form_sizer.Add(date_label, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
+            date_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        from_label = wx.StaticText(self.panel, label="from: ")
-        from_label.SetFont(font)
-        date_sizer.Add(from_label, 0, wx.LEFT | wx.ALIGN_CENTER_VERTICAL, font_size)
+            from_label = wx.StaticText(self.panel, label="from: ")
+            from_label.SetFont(font)
+            date_sizer.Add(from_label, 0, wx.LEFT | wx.ALIGN_CENTER_VERTICAL, font_size)
 
-        self.start_time = wx.adv.TimePickerCtrl(self.panel)
-        self.start_time.SetFont(font)
-        date_sizer.Add(self.start_time, 0, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, font_size)
+            self.start_time = wx.adv.TimePickerCtrl(self.panel)
+            self.start_time.SetFont(font)
+            date_sizer.Add(self.start_time, 0, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, font_size)
 
-        self.start_date = wx.adv.DatePickerCtrl(self.panel, style=wx.adv.DP_DROPDOWN)
-        self.start_date.SetFont(font)
-        date_sizer.Add(self.start_date, 0, wx.RIGHT, font_size)
+            self.start_date = wx.adv.DatePickerCtrl(self.panel, style=wx.adv.DP_DROPDOWN)
+            self.start_date.SetFont(font)
+            date_sizer.Add(self.start_date, 0, wx.RIGHT, font_size)
 
-        to_label = wx.StaticText(self.panel, label="to: ")
-        to_label.SetFont(font)
-        date_sizer.Add(to_label, 0, wx.LEFT | wx.ALIGN_CENTER_VERTICAL, font_size)
+            to_label = wx.StaticText(self.panel, label="to: ")
+            to_label.SetFont(font)
+            date_sizer.Add(to_label, 0, wx.LEFT | wx.ALIGN_CENTER_VERTICAL, font_size)
 
-        self.end_time = wx.adv.TimePickerCtrl(self.panel)
-        self.end_time.SetFont(font)
-        date_sizer.Add(self.end_time, 0, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, font_size)
+            self.end_time = wx.adv.TimePickerCtrl(self.panel)
+            self.end_time.SetFont(font)
+            date_sizer.Add(self.end_time, 0, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, font_size)
 
-        self.end_date = wx.adv.DatePickerCtrl(self.panel, style=wx.adv.DP_DROPDOWN)
-        self.end_date.SetFont(font)
-        date_sizer.Add(self.end_date, 0)
-        form_sizer.Add(date_sizer, 1, wx.EXPAND)
+            self.end_date = wx.adv.DatePickerCtrl(self.panel, style=wx.adv.DP_DROPDOWN)
+            self.end_date.SetFont(font)
+            date_sizer.Add(self.end_date, 0)
+            form_sizer.Add(date_sizer, 1, wx.EXPAND)
 
         # Interval slider + text
         interval_label = wx.StaticText(self.panel, label="Interval (minutes)")
@@ -104,13 +119,13 @@ class SchedulerFrame(wx.Frame):
         self.interval_txt.SetFont(font)
         interval_sizer.Add(self.interval_txt, 0)
         self.interval_slider.Bind(wx.EVT_SLIDER, self.on_slider_change)
-        self.interval_txt.Bind(wx.EVT_TEXT, self.on_text_change)
+        self.interval_txt.Bind(wx.EVT_TEXT, self.on_interval_txt_change)
         form_sizer.Add(interval_sizer, 1, wx.EXPAND)
 
         main_sizer.Add(form_sizer, 0, wx.ALL | wx.EXPAND, font_size)
 
         # Table for DataFrame display
-        self.grid = gridlib.Grid(self.panel)
+        self.grid = wx.grid.Grid(self.panel)
         self.grid.CreateGrid(0, 0)
         self.grid.SetFont(font)
         main_sizer.Add(self.grid, 1, wx.ALL | wx.EXPAND, 5)
@@ -136,23 +151,49 @@ class SchedulerFrame(wx.Frame):
         self.Layout()
 
     def load_env(self):
-        if os.path.exists(ENV_FILE):
-            load_dotenv(ENV_FILE)
-            self.api_key = os.getenv(API_KEY_FIELD, "")
-            self.prefix = os.getenv(PREFIX_FIELD, "")
-        else:
-            self.api_key = ""
-            self.prefix = ""
+        env = EnvManager()
+        self.api_txt.SetValue(env.get(Env.API_KEY))
+        self.prefix_txt.SetValue(env.get(Env.PREFIX))
+        self.data_txt.SetValue(env.get(Env.DATA_FILEPATH))
+        
+        ts_from_str = env.get(Env.TIMESTAMP_FROM)
+        ts_from = get_datetime_from_str(ts_from_str)
+        self.start_date.SetValue(ts_from)
+        self.start_time.SetValue(ts_from)
 
-    def save_api_key(self, event=None):
-        key = self.api_txt.GetValue()
-        with open(ENV_FILE, "a+") as f:
-            set_key(ENV_FILE, API_KEY_FIELD, key)
-    
-    def save_prefix(self, event=None):
-        prefix = self.prefix_txt.GetValue()
-        with open(ENV_FILE, "a+") as f:
-            set_key(ENV_FILE, PREFIX_FIELD, prefix)
+        ts_to_str = env.get(Env.TIMESTAMP_TO)
+        ts_from = get_datetime_from_str(ts_to_str)
+        self.end_date.SetValue(ts_from)
+        self.end_time.SetValue(ts_from)
+        
+        self.interval_txt.SetValue(env.get(Env.INTERVAL))
+
+    def store_env(self):
+        env = EnvManager()
+        env.set(Env.API_KEY, self.api_txt.GetValue())
+        env.set(Env.PREFIX, self.prefix_txt.GetValue())
+        env.set(Env.DATA_FILEPATH, self.data_txt.GetValue())
+
+        date_from = self.start_date.GetValue()
+        time_from = self.start_time.GetValue()
+        ts_from_str = get_timestamp_str_from_date_time(date_from, time_from)
+
+        date_to = self.end_date.GetValue()
+        time_to = self.end_time.GetValue()
+        ts_to_str = get_timestamp_str_from_date_time(date_to, time_to)
+
+        env.set(Env.TIMESTAMP_FROM, ts_from_str)
+        env.set(Env.TIMESTAMP_TO, ts_to_str)
+        env.set(Env.INTERVAL, self.interval_txt.GetValue())
+
+    def on_open(self, event):
+        if event.IsShown():
+            self.load_env()
+        event.Skip()
+
+    def on_close(self, event):
+        self.store_env()
+        self.Destroy()
 
     def on_browse(self, event):
         dlg = wx.FileDialog(self, message="Choose a CSV file",
@@ -162,27 +203,31 @@ class SchedulerFrame(wx.Frame):
         if dlg.ShowModal() == wx.ID_OK:
             path = dlg.GetPath()
             self.data_txt.SetValue(path)
-            self.last_dir = os.path.dirname(path)
-            self.load_csv(path)
         dlg.Destroy()
 
-    def load_csv(self, path):
+    def on_data_txt_change(self, event):
+        path = self.data_txt.GetValue()
+        self.last_dir = os.path.dirname(path)
         try:
-            df = pd.read_csv(path)
+            df = read_file(path)
+            self.reset_grid()
             self.display_dataframe(df)
         except Exception as e:
-            wx.MessageBox(f"Failed to load CSV:\n{e}", "Error", wx.OK | wx.ICON_ERROR)
+            self.reset_grid()
 
-    def display_dataframe(self, df):
+    def reset_grid(self):
         self.grid.ClearGrid()
         if self.grid.GetNumberRows() > 0:
             self.grid.DeleteRows(0, self.grid.GetNumberRows())
         if self.grid.GetNumberCols() > 0:
             self.grid.DeleteCols(0, self.grid.GetNumberCols())
 
+        self.display_dataframe(pd.DataFrame())
+        self.grid.ForceRefresh()
+
+    def display_dataframe(self, df):
         self.grid.AppendCols(len(df.columns))
         self.grid.AppendRows(len(df))
-
         for col_idx, col_name in enumerate(df.columns):
             self.grid.SetColLabelValue(col_idx, col_name)
             for row_idx, value in enumerate(df[col_name]):
@@ -191,10 +236,10 @@ class SchedulerFrame(wx.Frame):
         self.grid.AutoSizeColumns()
 
     def on_slider_change(self, event):
-        val = self.interval_slider.GetValue()
-        self.interval_txt.ChangeValue(str(val))
+        val = str(self.interval_slider.GetValue())
+        self.interval_txt.ChangeValue(val)
 
-    def on_text_change(self, event):
+    def on_interval_txt_change(self, event):
         val = self.interval_txt.GetValue()
         if val.isdigit():
             val_int = int(val)
@@ -203,6 +248,8 @@ class SchedulerFrame(wx.Frame):
 
     def on_start_schedule(self, event):
         try:
+            self.store_env()
+
             prefix = self.prefix_txt.GetValue()
             data_filepath = self.data_txt.GetValue()
             start_time = self.start_time.GetValue()
@@ -221,21 +268,16 @@ class SchedulerFrame(wx.Frame):
                 wx.MessageBox("Start datetime should be erlier than End datetime", "Error", wx.ICON_ERROR)
                 return
             
-            data_dirname = os.path.dirname(data_filepath)
-            output_dirpath = os.path.join(data_dirname, "api_output")
+            if not os.path.isfile(data_filepath):
+                wx.MessageBox("Data filepath is not correct!", "Error", wx.ICON_ERROR)
 
-            if not os.path.isfile(data_dirname):
-                wx.MessageBox("Data is not a file or does not exists!", "Error", wx.ICON_ERROR)
-                return
-
-            if not os.path.isdir(output_dirpath):
-                os.mkdir(output_dirpath)
+            exe_filepath = get_current_exe_filepath()
+            if not os.path.isfile(exe_filepath):
+                wx.MessageBox("Internal error!", "Error", wx.ICON_ERROR)
 
             schedule_script(
-                os.path.abspath("src/collect_data.py"),
-                ["-i", data_filepath,
-                 "-d", output_dirpath,
-                 "-p", prefix],
+                exe_filepath,
+                ['--env'],
                 start_dt,
                 end_dt,
                 interval
@@ -250,10 +292,36 @@ class SchedulerFrame(wx.Frame):
             wx.MessageBox("Schedule removed!", "Info", wx.ICON_INFORMATION)
         except:
             wx.MessageBox("Error while removing schedule!", "Error", wx.ICON_ERROR)
-        
+
+def parse_args():
+    """
+    Parse command-line arguments.
+    """
+    parser = argparse.ArgumentParser(description="")
+    parser.add_argument('--env', required=False,  help="Execute the actual data collection", action='store_true')
+    return parser.parse_args()
+
+def execute_collect_data():
+    now = datetime.now()
+    setup_logging('collect', now)
+
+    env = EnvManager()
+    prefix = str(env.get(Env.PREFIX))
+    input_filepath = str(env.get(Env.DATA_FILEPATH))
+
+    output_dirpath = get_api_output_dirpath(prefix)
+    if not os.path.isdir(output_dirpath):
+        os.mkdir(output_dirpath)
+
+    collect_data(input_filepath, output_dirpath, prefix, now)
 
 if __name__ == "__main__":
-    app = wx.App(False)
-    frame = SchedulerFrame()
-    frame.Show()
-    app.MainLoop()
+    args = parse_args()
+
+    if args.env:
+        execute_collect_data()
+    else:
+        app = wx.App(False)
+        frame = SchedulerFrame()
+        frame.Show()
+        app.MainLoop()
