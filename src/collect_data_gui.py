@@ -76,7 +76,7 @@ class SchedulerFrame(wx.Frame):
         form_sizer.Add(data_input_sizer, 1, wx.EXPAND | wx.ALIGN_CENTER_VERTICAL)
 
         # Start & End Date
-        if True: #is_windows():
+        if is_windows():
             date_label = wx.StaticText(self.panel, label="Date Range")
             date_label.SetFont(font)
             form_sizer.Add(date_label, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)

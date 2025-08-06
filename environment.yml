@@ -9,3 +9,4 @@ dependencies:
     - pyarrow
     - pandas
     - wxpython
+    - pyinstaller

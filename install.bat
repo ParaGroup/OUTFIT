@@ -1,5 +1,10 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
+
+REM === CONFIGURATION ===
+set "SCRIPT_NAME=src\collect_data_gui.py"
+set "EXENAME=OUTFIT"
+set "ICON=icons\outfit_rounded.ico"
 
 REM === Set project-local Miniconda installation path ===
 set "PROJECT_DIR=%~dp0"
@@ -50,6 +55,22 @@ if %errorlevel%==0 (
     call "%CONDA_BAT%" env create -f environment.yml
 )
 
-REM === Launch a new shell with the environment activated ===
-start cmd.exe /k "%MINICONDA_PATH%\Scripts\activate.bat %ENV_NAME%"
-exit /b
+REM === Build executable with pyinstaller ===
+pyinstaller --onefile --name %EXENAME% --icon=%ICON% %SCRIPT_NAME%.py
+if errorlevel 1 (
+    echo [ERROR] PyInstaller failed to build executable.
+    exit /b 1
+)
+
+REM === Move the .exe to the current directory ===
+move /Y "dist\%SCRIPT_NAME%.exe" . >nul
+
+REM === Clean up unnecessary build files ===
+echo [*] Cleaning up intermediate files...
+del /Q /F "%SCRIPT_NAME%.spec" 2>nul
+rmdir /S /Q build 2>nul
+rmdir /S /Q dist 2>nul
+rmdir /S /Q __pycache__ 2>nul
+
+endlocal
+pause
