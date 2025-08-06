@@ -44,4 +44,4 @@ run: build
 
 clean:
 	-$(RM) *.spec
-	-$(RMDIR) build dist __pycache__ 2>nul || true
+	-$(RMDIR) build dist __pycache__
