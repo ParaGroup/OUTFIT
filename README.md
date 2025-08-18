@@ -1,83 +1,50 @@
 # OUTFIT
 **OUTFIT - Dynamic Road Noise Maps Based on Crowdsourced Data and Represented in Digital Twins**
 
-The OUTFIT PRIN 2022 project aims to dynamically represent road traffic noise (RTN) in a Digital Twin (DT) model by optimizing the data flow related to noise levels and citizen perception.
+The **OUTFIT PRIN 2022** project aims to dynamically represent road traffic noise (RTN) in a **Digital Twin (DT)** model by optimizing the data flow related to noise levels and citizen perception.
+
 
 ## Overview
-This repository is dedicated to developing the pipeline that, starting from raw data obtained via API calls to the Google Maps Directions service, provides an output matrix of the perceived sound power at receivers located on building facades in the area of interest.
+This repository provides tools to:
+- Collect raw data via API calls to the **Google Maps Directions** service.
+- Process this data to generate **perceived sound power** at receivers located on building facades in the area of interest.
+
 
 # Installation
-The project needs the following package installed:
+## Requirements
+This project requires the following Python packages:
 - python-dotenv
 - requests
 - numpy
 - pyarrow
 - pandas
+- wxpython
+- pyinstaller
 
-We suggest to install them in a Python environment with `conda` (see [Miniconda Installation](#Miniconda-Installation)) or `venv` (see [Python Venv Installation](Python-Venv-Installation)).
+It is recommended to install these packages inside a Python virtual environment using **conda** or **venv**.
 
-## Miniconda Installation
-The following commands to install Miniconda3 on your system are taken from the [official documentation](https://docs.anaconda.com/miniconda/).
-### Windows CMD
+You can find instructions to install Conda here: [Conda Installation](https://docs.conda.io/projects/conda/en/latest/user-guide/install/)
+You can find instructions to install venv (built into Python 3) here: [venv Documentation](https://docs.python.org/3/library/venv.html)
+
+Tip: You can use `pyenv.bat` (Windows) or `source pyenv.sh` (Linux/macOS) to automatically install Miniconda, set up the environment, and enter it.
+Alternatively, you can use `bundle.bat` (Windows, Linux/macOS support coming soon) to generate a standalone execution file for the entire project.
+
+
+## Using Conda
+Once Conda is installed, create and activate a new environment with:
+
 ```bash
-curl https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe -o miniconda.exe
-start /wait "" .\miniconda.exe /S
-del miniconda.exe
-
-# After installing, open the “Anaconda Powershell Prompt (miniconda3)” and
-# create a new environment from the environment.yml file
 conda env create -f environment.yml
+conda activate outfit
 ```
 
-### Windows PowerShell
-```bash
-curl https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe -o miniconda.exe
-Start-Process -FilePath ".\miniconda.exe" -ArgumentList "/S" -Wait
-del miniconda.exe
+This will automatically install all required packages defined in `environment.yml`.
 
-# After installing, open the “Anaconda Prompt (miniconda3)” and
-# create a new environment from the environment.yml file
-conda env create -f environment.yml
-```
 
-### macOS
-```bash
-mkdir -p ~/miniconda3
-curl https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-arm64.sh -o ~/miniconda3/miniconda.sh
-bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
-rm ~/miniconda3/miniconda.sh
-
-# Initialize miniconda for bash or zsh shells:
-~/miniconda3/bin/conda init bash
-# or
-~/miniconda3/bin/conda init zsh
-
-# Close and reopen your terminal to activate conda and
-# create a new environment from the environment.yml file
-conda env create -f environment.yml
-```
-
-### Linux
-```bash
-mkdir -p ~/miniconda3
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
-rm ~/miniconda3/miniconda.sh
-
-# Initialize miniconda for bash or zsh shells:
-~/miniconda3/bin/conda init bash
-# or
-~/miniconda3/bin/conda init zsh
-
-# Close and reopen your terminal to activate conda and
-# create a new environment from the environment.yml file
-conda env create -f environment.yml
-```
-
-## Python Venv Installation
-The following commands to create a Python virtual environment are taken from the [official documentation](https://docs.python.org/3/library/venv.html).
-
-Before creating the virtual environment, make sure you have [cloned the repository](#clone-the-repository) and `cd` into it (e.g., `cd ~/OUTFIT`).
+## Using venv
+`venv` is a built-in Python module for creating isolated environments.
+Using a virtual environment ensures that your project dependencies do not conflict with other Python projects on your system.
+Steps to create a `venv`, install packages, and enter the environment:
 
 ### Windows CMD
 ```bash
@@ -99,3 +66,27 @@ python -m venv outfit
 source outfit/bin/activate
 pip install -r requirements.txt
 ```
+
+# Usage
+You can run the project in two ways:
+
+1. **Download the executable**
+   Download the `OUTFIT.exe` file and run it directly.
+
+2. **Run with Python**
+   Install the required packages (see [Installation](#installation)) and run the GUI with:
+   ```bash
+   python src/outfit.py
+
+
+## Using the GUI
+Once the GUI appears, you will need to provide the following information:
+- `API Key`: your Google APIs key;
+- `Prefix`: a name to identify your collected data;
+- `data`: the path of the CSV file containing the streets for which data will be collected;
+- `Data Range`: the date and time range over which the data will be collected.
+- `Interval`: the time in minutes between two consecutive API calls while collecting street information.
+
+After filling in all the required fields:
+- Click `Start Schedule` to begin the data collection task.
+- Click `Remove Schedules` to delete all scheduled tasks.

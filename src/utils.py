@@ -9,6 +9,7 @@ import platform
 import subprocess
 import sys
 import os
+import io
 import csv
 import logging
 import time
@@ -18,6 +19,8 @@ from enum import Enum
 from dotenv import load_dotenv, set_key, unset_key
 from datetime import datetime
 import pandas as pd
+import shutil
+import locale
 
 
 #------------------------------------------------------------------------------
@@ -35,7 +38,7 @@ def generate_log_filename(name: str, now: datetime) -> str:
     "logs/{name}-{year}-{month}-{day}-{hour}-{minute}-{weekday}.log".
     Example: "logs/collect-2025-07-28-14-30-Monday.csv"
     """
-    dir = "logs"
+    dir = os.path.abspath("logs")
     timestamp = generate_filename_timestamp(now)
     filename = f"{name}-{timestamp}.log"
     return os.path.join(dir, filename)
@@ -50,16 +53,9 @@ def generate_output_filename(dir:str, prefix: str, now: datetime) -> str:
     filename = f"{prefix}-{timestamp}.csv"
     return os.path.join(dir, filename)
 
-def get_api_output_dirpath(prefix: str = ""):
-    env = EnvManager()
-    data_filepath = str(env.get(Env.DATA_FILEPATH))
-    data_dirname = os.path.dirname(data_filepath)
+def get_api_output_dirpath(data_dirname: str = "", prefix: str = ""):
     return os.path.join(data_dirname, prefix, API_OUTPUT_DIRNAME)
 
-def get_current_exe_filepath():
-    if getattr(sys, 'frozen', False):
-        return sys._MEIPASS
-    return os.path.dirname(os.path.abspath(__file__))
 
 #------------------------------------------------------------------------------
 #
@@ -67,16 +63,18 @@ def get_current_exe_filepath():
 #
 #------------------------------------------------------------------------------
 
-def setup_logging(name: str, now: datetime, debug=False):
+def setup_logging(name: str, now: datetime, debug=False, to_file = True):
     log_path = generate_log_filename(name, now)
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
+    handlers = [logging.StreamHandler()]
+    if to_file:
+        handlers.append(logging.FileHandler(log_path))
+
     logging.basicConfig(
         level=(logging.DEBUG if debug else logging.INFO),
         format="%(asctime)-15s - %(levelname)-8s - %(message)s",
-        handlers=[
-            logging.FileHandler(log_path),
-            logging.StreamHandler()
-        ]
+        handlers=handlers
     )
 
 
@@ -99,7 +97,6 @@ def debug_info(print_info=PRINT_INFO, dump=DUMP_RESULTS):
             return result
         return wrapper
     return decorator
-
 
 def timer(func):
     def wrapper(*args, **kwargs):
@@ -218,11 +215,14 @@ class Env(Enum):
     TIMESTAMP_FROM = "TIMESTAMP_FROM"
     TIMESTAMP_TO = "TIMESTAMP_TO"
     INTERVAL = "INTERVAL"
+    PROCESS_DATA = "PROCESS_DATA"
 
 class EnvManager:
     def __init__(self, filepath=".env"):
-        self.filepath = Path(filepath)
-        self.filepath.touch(exist_ok=True)
+        self.filepath = filepath
+        if not os.path.exists(self.filepath):
+            with open(self.filepath, "w"):
+                pass
         load_dotenv(dotenv_path=self.filepath, override=True)
 
     def get(self, field: Env, default=None):
@@ -233,6 +233,7 @@ class EnvManager:
 
     def delete(self, field: Env):
         unset_key(str(self.filepath), field.value)
+
 
 #------------------------------------------------------------------------------
 #
@@ -247,7 +248,7 @@ def is_windows() -> bool:
     return platform.system() == "Windows"
 
 def schedule_on_unix(script_path, args, interval_minutes, prefix=SCHEDULE_PREFIX):
-    job_name = f"{prefix}{int(datetime.now().timestamp())}"
+    job_name = f"{prefix}_{datetime.now().strftime('%Y%m%d-%H%M')}"
     cron_expr = f"*/{interval_minutes} * * * *"
     cron_command = f"{cron_expr} {sys.executable} {script_path} {' '.join(args)} # {job_name}"
 
@@ -259,23 +260,22 @@ def schedule_on_unix(script_path, args, interval_minutes, prefix=SCHEDULE_PREFIX
     print(f"Cron job scheduled every {interval_minutes} minutes on Unix.")
 
 def schedule_on_windows(script_path, args, start_dt, end_dt, interval_minutes, prefix=SCHEDULE_PREFIX):
-    import shutil
+    locale.setlocale(locale.LC_TIME, '')
+
     if shutil.which("schtasks") is None:
         raise RuntimeError("Windows Task Scheduler (schtasks) not found.")
 
     if interval_minutes < 1 or interval_minutes > 1439:
         raise ValueError("Interval must be between 1 and 1439 minutes on Windows.")
 
-    task_name = f"{prefix}{int(datetime.now().timestamp())}"
-    start_time = start_dt.strftime("%H:%M")
-    start_date = start_dt.strftime("%m/%d/%Y")
-    end_date = end_dt.strftime("%m/%d/%Y")
+    task_name = f"{prefix}_{datetime.now().strftime('%Y%m%d-%H%M')}"
+    start_time = start_dt.strftime("%X")
+    start_date = start_dt.strftime("%x")
+    end_time = end_dt.strftime("%X")
+    end_date = end_dt.strftime("%x")
 
-    # Properly quote each argument
-    quoted_args = ' '.join(f'"{arg}"' for arg in args)
-    # Wrap entire command in escaped quotes
-    full_cmd = f'"{sys.executable}" "{script_path}" {quoted_args}'
-    full_cmd = f'"{full_cmd}"'  # Important: wrap entire command in quotes for /TR
+    quoted_args = ' '.join(args)
+    full_cmd = f'{script_path} {quoted_args}'
 
     # Build schtasks command
     create_cmd = [
@@ -288,6 +288,7 @@ def schedule_on_windows(script_path, args, start_dt, end_dt, interval_minutes, p
         "/ST", start_time,
         "/SD", start_date,
         "/ED", end_date,
+        "/ET", end_time,
         "/F",
         "/RL", "LIMITED"
     ]
@@ -297,15 +298,7 @@ def schedule_on_windows(script_path, args, start_dt, end_dt, interval_minutes, p
         print(f"Windows task '{task_name}' scheduled successfully.")
     except subprocess.CalledProcessError as e:
         print("Failed to schedule task:", e)
-
-def schedule_script(script_path, script_args, start_dt, end_dt, interval_minutes, prefix=SCHEDULE_PREFIX):
-    if is_unix():
-        # schedule_on_unix(script_path, script_args, interval_minutes, prefix)
-        raise NotImplementedError("Linux and Darwin are not supported yet!")
-    elif is_windows():
-        schedule_on_windows(script_path, script_args, start_dt, end_dt, interval_minutes, prefix)
-    else:
-        raise NotImplementedError("Unsupported OS")
+        raise Exception("Failed to schedule task")
     
 def remove_cron_jobs_with_prefix(prefix=SCHEDULE_PREFIX):
     result = subprocess.run("crontab -l", shell=True, capture_output=True, text=True)
@@ -320,22 +313,43 @@ def remove_cron_jobs_with_prefix(prefix=SCHEDULE_PREFIX):
     subprocess.run(f"(echo '{updated_crontab}') | crontab -", shell=True)
     print(f"Removed cron jobs with prefix '{prefix}'")
 
-def remove_windows_tasks_with_prefix(prefix=SCHEDULE_PREFIX):
-    result = subprocess.run('schtasks /Query /FO LIST /V', capture_output=True, text=True, shell=True)
-    if result.returncode != 0:
-        print("Failed to query scheduled tasks.")
-        return
+def remove_windows_tasks_with_prefix(prefix = SCHEDULE_PREFIX):
+    if shutil.which("schtasks") is None:
+        raise RuntimeError("Windows Task Scheduler (schtasks) not found.")
+    try:
+        result = subprocess.run(
+            ["schtasks", "/Query", "/FO", "CSV"],
+            capture_output=True, text=True, check=True
+        )
 
-    tasks_output = result.stdout
-    tasks = [line for line in tasks_output.splitlines() if line.startswith("TaskName:")]
+        csv_reader = csv.reader(io.StringIO(result.stdout))
+        rows = list(csv_reader)
+        if not rows:
+            print("No task found!")
+            return
 
-    for task in tasks:
-        task_name = task.split(":", 1)[1].strip()
-        if f"\\{prefix}" in task_name:
-            print(f"Deleting task: {task_name}")
-            subprocess.run(f'schtasks /Delete /TN "{task_name}" /F', shell=True)
+        task_names = [row[0] for row in rows[1:] if row and row[0].startswith(f"\\{prefix}")]
 
-    print(f"Removed scheduled tasks with prefix '{prefix}'")
+        for task_name in task_names:
+            try:
+                subprocess.run(
+                    ["schtasks", "/Delete", "/TN", task_name, "/F"],
+                    check=True
+                )
+                print(f"Deleted task: {task_name}")
+            except subprocess.CalledProcessError as e:
+                print(f"Failed to delete task {task_name}: {e}")
+    except subprocess.CalledProcessError as e:
+        print("Failed to query scheduled tasks:", e)
+
+def schedule_script(script_path, script_args, start_dt, end_dt, interval_minutes, prefix=SCHEDULE_PREFIX):
+    if is_unix():
+        # schedule_on_unix(script_path, script_args, interval_minutes, prefix)
+        raise NotImplementedError("Linux and Darwin are not supported yet!")
+    elif is_windows():
+        schedule_on_windows(script_path, script_args, start_dt, end_dt, interval_minutes, prefix)
+    else:
+        raise NotImplementedError("Unsupported OS")
 
 def remove_schedule(prefix=SCHEDULE_PREFIX):
     if is_unix():

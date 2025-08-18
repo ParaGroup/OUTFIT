@@ -18,7 +18,7 @@ def parse_args():
     """
     parser = argparse.ArgumentParser(description="Collect data using Google Directions API.")
     parser.add_argument('-i', '--input',  required=True,  help="Path to input CSV file.")
-    parser.add_argument('-o', '--output', required=False, help="Specify the directory to store the output CSV file.", default="")
+    parser.add_argument('-o', '--output', required=False, help="Specify the directory to store the output CSV file.", default=".")
     parser.add_argument('-p', '--prefix', required=True,  help="Prefix name of output CSV file.")
     return parser.parse_args()
 
@@ -83,27 +83,21 @@ def enrich_with_directions(api_key: str, df: pd.DataFrame, now: datetime) -> pd.
     return df
 
 def collect_data(
+        api_key: str,
         input_filepath: str,
         output_dirpath: str,
         prefix: str,
-        now: datetime
-        ):
+        now: datetime):
     if not os.path.isfile(input_filepath):
         logging.error(f"The input file does not exist: {input_filepath}")
-        sys.exit(1)
+        sys.exit(2)
 
     if not os.path.isdir(output_dirpath):
         logging.error(f"The output directory does not exist: {output_dirpath}")
-        sys.exit(2)
+        sys.exit(3)
 
     if not (prefix and prefix.strip()):
         logging.error(f'The prefix has not been specified.')
-        sys.exit(3)
-
-    env = EnvManager()
-    api_key = str(env.get(Env.API_KEY))
-    if not (api_key and api_key.strip()):
-        logging.error(f"The API_KEY is not set!")
         sys.exit(4)
 
     try:
@@ -115,7 +109,7 @@ def collect_data(
         write_csv_file(output_df, output_filename)
 
     except Exception as e:
-        logging.error("Fatal error occurred: {e}")
+        logging.error(f"Fatal error occurred: {e}")
         raise
 
 
@@ -124,4 +118,11 @@ if __name__ == "__main__":
     setup_logging('collect', now)
 
     args = parse_args()
-    collect_data(args.input, args.output, args.prefix, now)
+
+    env = EnvManager()
+    api_key = str(env.get(Env.API_KEY))
+    if not (api_key and api_key.strip()):
+        logging.error(f"The API_KEY is not set!")
+        sys.exit(1)
+
+    collect_data(api_key, args.input, args.output, args.prefix, now)

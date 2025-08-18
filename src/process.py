@@ -1,3 +1,9 @@
+"""
+Authors: Pasquale Gorrasi & Alberto Ottimo
+Project: OUTFIT
+Date: 2025-07-25
+"""
+
 import os
 import sys
 import argparse
@@ -17,7 +23,7 @@ def parse_args():
     """
     parser = argparse.ArgumentParser(description="...") # TODO
     parser.add_argument('-i', '--input',  required=True,  help="Path to input CSV file.")
-    parser.add_argument('-m', '--matrix', required=True,  help="Path to the Noise Attenuation Matrix.")
+    parser.add_argument('-a', '--matrix', required=True,  help="Path to the Noise Attenuation Matrix.")
     parser.add_argument('-o', '--output', required=True,  help="Name of output file.")
     parser.add_argument('-f', '--force' , required=False, help="Force rewrite output file.", action='store_true')
     return parser.parse_args()
@@ -42,11 +48,38 @@ def preprocess_parameters():
     attenuation_matrix_df = preproces_attenuation_matrix(attenuation_matrix_df)
 
 @timer
-def process_data(filename):
-    global street_params_df, freq_coeffs_df, curve_A_df, attenuation_matrix_df
+def process_data(
+    input_filename: str,
+    matrix_filename: str,
+    output_filename: str,
+    overwrite: bool = False):
+    global street_params_df, freq_coeffs_df, curve_A_df, attenuation_matrix_df, attenuation_matrix_filename
+
+    if not os.path.isfile(input_filename):
+        logging.error(f"The input file does not exist: {input_filename}")
+        sys.exit(1)
+
+    if not os.path.isfile(matrix_filename):
+        try:
+            merge_file(matrix_filename)
+        except FileNotFoundError:
+            logging.error(f"The Noise Attenuation matrix does not exists: {matrix_filename}")
+            sys.exit(2)
+    else:
+        attenuation_matrix_filename = str(matrix_filename)
+
+    if os.path.isfile(output_filename):
+        if not overwrite:
+            logging.error(f"The file {output_filename} already exists! Use `--force` to overwrite it.")
+            sys.exit(3)
+        else:
+            logging.debug(f"Overwriting file {output_filename}")
+
+    read_parameters()
+    preprocess_parameters()
 
     logging.info("Reading input data...")
-    data_df = read_file(filename)
+    data_df = read_file(input_filename)
 
     logging.info("Starting computation...")
     equivalent_flows_df      = equivalent_flows(data_df, street_params_df)
@@ -54,7 +87,7 @@ def process_data(filename):
     attenuated_df            = noise_attenuation(sound_pressure_levels_df, attenuation_matrix_df)
     energetic_sum_df         = energetic_sum(attenuated_df)
 
-    return energetic_sum_df
+    write_csv_file(energetic_sum_df, output_filename)
 
 
 if __name__ == "__main__":
@@ -62,28 +95,4 @@ if __name__ == "__main__":
     setup_logging("process", now, debug=True)
 
     args = parse_args()
-
-    if not os.path.isfile(args.input):
-        logging.error(f"The input file does not exist: {args.input}")
-        sys.exit(1)
-
-    if not os.path.isfile(args.matrix):
-        try:
-            merge_file(args.matrix)
-        except FileNotFoundError:
-            logging.error(f"The Noise Attenuation matrix does not exists: {args.matrix}")
-            sys.exit(2)
-    else:
-        attenuation_matrix_filename = str(args.matrix)
-
-    if os.path.isfile(args.output):
-        if not args.force:
-            logging.error(f"The file {args.output} already exists! Use `--force` to overwrite it.")
-            sys.exit(3)
-        else:
-            logging.debug(f"Overwriting file {args.output}")
-
-    read_parameters()
-    preprocess_parameters()
-    df = process_data(args.input)
-    write_csv_file(df, args.output)
+    process_data(args.input, args.matrix, args.output, args.force)

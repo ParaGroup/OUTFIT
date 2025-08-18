@@ -13,5 +13,5 @@ USE_PYARROW = False
 PRINT_INFO = False
 DUMP_RESULTS = False
 
-SCHEDULE_PREFIX="outfit_"
+SCHEDULE_PREFIX="outfit"
 API_OUTPUT_DIRNAME = "api_output"

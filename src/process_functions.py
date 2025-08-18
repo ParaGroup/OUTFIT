@@ -1,3 +1,9 @@
+"""
+Authors: Pasquale Gorrasi & Alberto Ottimo
+Project: OUTFIT
+Date: 2025-07-25
+"""
+
 from utils import *
 import numpy as np
 import pandas as pd
@@ -60,6 +66,7 @@ def preprocess_street_params(
     id_vars = ['highway', 'capacity', 'free_speed', 'daytime', 'alpha', 'beta']
     value_vars = list(coeffs.keys())
 
+    # For each row, this function will generate 4 rows (one for each f_k (f1, f2, f3, f4))
     return pd.melt(df, id_vars=id_vars, value_vars=value_vars,
                    var_name='vehicle_type', value_name='value')
 
@@ -161,7 +168,7 @@ def equivalent_flows(
         base = base.clip(lower=0)  # Ensure base >= 0
         flow_factor = base ** (1 / merged['beta'])
 
-    # Compute number of vehicles
+    # Compute number of vehicles for each veichle_type (f1, f2, f3, f4)
     merged['num_vehicles'] = (merged['capacity'] * flow_factor * merged['value']).astype(int)
 
     # Drop useless columns
