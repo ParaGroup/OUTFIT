@@ -1,12 +1,12 @@
+@echo off
+setlocal
+
 REM Author: Alberto Ottimo
 REM Project: OUTFIT
 REM Date: 2025-08-06
 
-@echo off
-setlocal
-
 REM === CONFIGURATION ===
-set "SCRIPT_NAME=src\collect_data_gui.py"
+set "SCRIPT_NAME=src\outfit.py"
 set "EXENAME=OUTFIT"
 set "ICON=icons\outfit_rounded.ico"
 
