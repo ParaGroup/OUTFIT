@@ -17,7 +17,7 @@ import glob
 from pathlib import Path
 from enum import Enum
 from dotenv import load_dotenv, set_key, unset_key
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import shutil
 import locale
@@ -180,7 +180,7 @@ def read_parquet_file(filename):
 
 def read_file(filename, base_dir=None):
     filepath = os.path.join(base_dir, filename) if base_dir else filename
-    
+
     if filename.endswith('.json'):
         return read_json_file(filepath)
     elif filename.endswith('.csv'):
@@ -247,6 +247,16 @@ def is_unix() -> bool:
 def is_windows() -> bool:
     return platform.system() == "Windows"
 
+def date_windows_locale_str(dt: datetime) -> str:
+    if locale.getlocale(locale.LC_TIME) == (None, None):
+        locale.setlocale(locale.LC_TIME, "")
+    return dt.strftime("%x")
+
+def time_windows_locale_str(dt: datetime) -> str:
+    if locale.getlocale(locale.LC_TIME) == (None, None):
+        locale.setlocale(locale.LC_TIME, "")
+    return dt.strftime("%X")
+
 def schedule_on_unix(script_path, args, interval_minutes, prefix=SCHEDULE_PREFIX):
     job_name = f"{prefix}_{datetime.now().strftime('%Y%m%d-%H%M')}"
     cron_expr = f"*/{interval_minutes} * * * *"
@@ -260,19 +270,29 @@ def schedule_on_unix(script_path, args, interval_minutes, prefix=SCHEDULE_PREFIX
     print(f"Cron job scheduled every {interval_minutes} minutes on Unix.")
 
 def schedule_on_windows(script_path, args, start_dt, end_dt, interval_minutes, prefix=SCHEDULE_PREFIX):
-    locale.setlocale(locale.LC_TIME, '')
-
     if shutil.which("schtasks") is None:
         raise RuntimeError("Windows Task Scheduler (schtasks) not found.")
 
     if interval_minutes < 1 or interval_minutes > 1439:
         raise ValueError("Interval must be between 1 and 1439 minutes on Windows.")
 
+    # Workaround on schtasks.exe to satisfy:
+    # (end_time - start_time) > interval
+    # only when end_time > start_time
+    start_time = datetime(start_dt.year, start_dt.month, start_dt.day, start_dt.hour, start_dt.minute)
+    end_time = datetime(start_dt.year, start_dt.month, start_dt.day, end_dt.hour, end_dt.minute)
+
+    if end_time >= start_time:
+        diff = end_time - start_time
+        if diff <= timedelta(minutes=interval_minutes):
+            compensation = (timedelta(minutes=interval_minutes + 1) - diff)
+            end_time = end_time + compensation
+
     task_name = f"{prefix}_{datetime.now().strftime('%Y%m%d-%H%M')}"
-    start_time = start_dt.strftime("%X")
-    start_date = start_dt.strftime("%x")
-    end_time = end_dt.strftime("%X")
-    end_date = end_dt.strftime("%x")
+    start_date_str = date_windows_locale_str(start_dt)
+    start_time_str = time_windows_locale_str(start_time)
+    end_date_str = date_windows_locale_str(end_dt)
+    end_time_str = time_windows_locale_str(end_time)
 
     quoted_args = ' '.join(args)
     full_cmd = f'{script_path} {quoted_args}'
@@ -285,10 +305,10 @@ def schedule_on_windows(script_path, args, start_dt, end_dt, interval_minutes, p
         "/TR", full_cmd,
         "/SC", "MINUTE",
         "/MO", str(interval_minutes),
-        "/ST", start_time,
-        "/SD", start_date,
-        "/ED", end_date,
-        "/ET", end_time,
+        "/ST", start_time_str,
+        "/SD", start_date_str,
+        "/ED", end_date_str,
+        "/ET", end_time_str,
         "/F",
         "/RL", "LIMITED"
     ]
@@ -299,7 +319,7 @@ def schedule_on_windows(script_path, args, start_dt, end_dt, interval_minutes, p
     except subprocess.CalledProcessError as e:
         print("Failed to schedule task:", e)
         raise Exception("Failed to schedule task")
-    
+
 def remove_cron_jobs_with_prefix(prefix=SCHEDULE_PREFIX):
     result = subprocess.run("crontab -l", shell=True, capture_output=True, text=True)
     if result.returncode != 0:

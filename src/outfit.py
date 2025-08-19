@@ -10,7 +10,7 @@ import wx.grid
 import os
 import argparse
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from utils import *
 from collect_data import collect_data
 from process import process_data
@@ -31,6 +31,19 @@ def get_timestamp_str_from_date_time(date, time):
     date_str = date.FormatISODate()
     time_str = time.Format("%H:%M:%S")
     return f"{date_str} {time_str}"
+
+def wxDateTime_to_datetime(dt: wx.DateTime) -> datetime:
+    if not dt.IsValid():
+        raise ValueError("Invalid wx.DateTime object")
+
+    year = int(dt.GetYear())
+    month = int(dt.GetMonth()) + 1  # wx.DateTime months are 0-based
+    day = int(dt.GetDay())
+    hour = int(dt.GetHour())
+    minute = int(dt.GetMinute())
+    second = int(dt.GetSecond())
+
+    return datetime(year, month, day, hour, minute, second)
 
 
 class SchedulerFrame(wx.Frame):
@@ -201,7 +214,7 @@ class SchedulerFrame(wx.Frame):
             self.end_time.SetValue(ts_from)
 
             self.interval_txt.SetValue(env.get(Env.INTERVAL))
-            self.process_data_checkbox.SetValue(env.get(Env.PROCESS_DATA))
+            # self.process_data_checkbox.SetValue(env.get(Env.PROCESS_DATA))
 
             logging.info("Environment variables loaded successfully.")
         except Exception as e:
@@ -225,7 +238,7 @@ class SchedulerFrame(wx.Frame):
             env.set(Env.TIMESTAMP_FROM, ts_from_str)
             env.set(Env.TIMESTAMP_TO, ts_to_str)
             env.set(Env.INTERVAL, self.interval_txt.GetValue())
-            env.set(Env.PROCESS_DATA, self.process_data_checkbox.GetValue())
+            # env.set(Env.PROCESS_DATA, self.process_data_checkbox.GetValue())
 
             logging.info(f"Environment variables stored to {filename}")
         except Exception as e:
@@ -297,10 +310,10 @@ class SchedulerFrame(wx.Frame):
         try:
             prefix = self.prefix_txt.GetValue()
             data_filepath = self.data_txt.GetValue()
-            start_time = self.start_time.GetValue()
-            start_date = self.start_date.GetValue()
-            end_time = self.end_time.GetValue()
-            end_date = self.end_date.GetValue()
+            start_time = wxDateTime_to_datetime(self.start_time.GetValue())
+            start_date = wxDateTime_to_datetime(self.start_date.GetValue())
+            end_time = wxDateTime_to_datetime(self.end_time.GetValue())
+            end_date = wxDateTime_to_datetime(self.end_date.GetValue())
             interval = self.interval_slider.GetValue()
 
             start_dt = datetime(start_date.year, start_date.month, start_date.day,
@@ -315,9 +328,14 @@ class SchedulerFrame(wx.Frame):
 
             env_abs_filepath = os.path.abspath(env_filepath)
 
+            if start_dt < datetime.now():
+                logging.warning("Start datetime is in the past.")
+                wx.MessageBox("Start date and time should be after the current date and time!", "Error", wx.ICON_ERROR)
+                return
+
             if end_dt <= start_dt:
                 logging.warning("Start datetime is not earlier than end datetime.")
-                wx.MessageBox("Start datetime should be earlier than end datetime", "Error", wx.ICON_ERROR)
+                wx.MessageBox("Start datetime should be earlier than end datetime!", "Error", wx.ICON_ERROR)
                 return
 
             if not os.path.isfile(data_filepath):
