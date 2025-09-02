@@ -17,7 +17,7 @@ def parse_args():
     Parse command-line arguments.
     """
     parser = argparse.ArgumentParser(description="Collect data using Google Directions API.")
-    parser.add_argument('-i', '--input',  required=True,  help="Path to input CSV file.")
+    parser.add_argument('-i', '--input',  required=True,  help="Path to input CSV file containing streets.")
     parser.add_argument('-o', '--output', required=False, help="Specify the directory to store the output CSV file.", default=".")
     parser.add_argument('-p', '--prefix', required=True,  help="Prefix name of output CSV file.")
     return parser.parse_args()
@@ -58,7 +58,7 @@ def enrich_with_directions(api_key: str, df: pd.DataFrame, now: datetime) -> pd.
     """
     if 'xy_start' not in df.columns or 'xy_end' not in df.columns:
         raise ValueError("`df` must contain 'xy_start' and 'xy_end' columns.")
-    
+
     hour = int(now.strftime('%H'))
     # Initialize new columns
     df['datetime'] = now

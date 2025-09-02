@@ -144,14 +144,17 @@ def split_file(input_filename, part_size = 42):
             part_num += 1
     print(f"File '{filename}' split into {part_num} parts.")
 
+def get_part_filenames(filename):
+    base_filename = remove_extension(filename)
+    part_pattern = f"{base_filename}.part*"
+    return sorted(glob.glob(part_pattern))
+
 def merge_file(output_filename):
     """
     Merges parts named {output_filename}.part{n:03d} from 'directory'
     into a single file with the name 'output_filename'.
     """
-    filename = remove_extension(output_filename)
-    part_pattern = f"{filename}.part*"
-    parts = sorted(glob.glob(part_pattern))
+    parts = get_part_filenames(output_filename)
 
     if not parts:
         raise FileNotFoundError("No parts found to merge.")
@@ -211,11 +214,15 @@ def write_parquet_file(df, filename):
 class Env(Enum):
     API_KEY = "API_KEY"
     PREFIX = "PREFIX"
-    DATA_FILEPATH = "DATA_FILEPATH"
+    STREETS_FILEPATH = "STREETS_FILEPATH"
     TIMESTAMP_FROM = "TIMESTAMP_FROM"
     TIMESTAMP_TO = "TIMESTAMP_TO"
     INTERVAL = "INTERVAL"
     PROCESS_DATA = "PROCESS_DATA"
+    ATTENUATION_MATRIX = "ATTENUATION_MATRIX"
+    STREET_PARAMS = "STREET_PARAMS"
+    FREQ_COEFFS = "FREQ_COEFFS"
+    CURVE_A = "CURVE_A"
 
 class EnvManager:
     def __init__(self, filepath=".env"):
@@ -228,8 +235,14 @@ class EnvManager:
     def get(self, field: Env, default=None):
         return os.getenv(field.value, default)
 
+    def get_bool(self, field: Env, default=False):
+        return os.getenv(field.value, str(default)).lower() == "true"
+
     def set(self, field: Env, value: str):
         set_key(str(self.filepath), field.value, value)
+
+    def set_bool(self, field: Env, value: bool):
+        set_key(str(self.filepath), field.value, str(value))
 
     def delete(self, field: Env):
         unset_key(str(self.filepath), field.value)

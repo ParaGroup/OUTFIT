@@ -5,9 +5,9 @@ Date: 2025-07-25
 """
 
 PARAMS_DIR = 'params'
-street_params_filename      = "street_params.csv"
-freq_coeffs_filename        = "freq_coeffs.csv"
-curve_A_filename            = "curve_A.csv"
+STREET_PARAMS_FILENAME      = "street_params.csv"
+FREQ_COEFFS_FILENAME        = "freq_coeffs.csv"
+CURVE_A_FILENAME            = "curve_A.csv"
 
 USE_PYARROW = False
 PRINT_INFO = False
