@@ -14,7 +14,6 @@ import csv
 import logging
 import time
 import glob
-from pathlib import Path
 from enum import Enum
 from dotenv import load_dotenv, set_key, unset_key
 from datetime import datetime, timedelta
@@ -25,9 +24,17 @@ import locale
 
 #------------------------------------------------------------------------------
 #
-# Logging functions
+# Filename functions
 #
 #------------------------------------------------------------------------------
+
+def remove_extension(filename):
+    filename, _ = os.path.splitext(filename)
+    return filename
+
+def replace_extension(filename, new_ext):
+    _, ext = os.path.splitext(filename)
+    return filename.replace(ext, new_ext)
 
 def generate_filename_timestamp(now: datetime) -> str:
     return now.strftime("%Y%m%d-%H%M-%A")
@@ -53,9 +60,22 @@ def generate_output_filename(dir:str, prefix: str, now: datetime) -> str:
     filename = f"{prefix}-{timestamp}.csv"
     return os.path.join(dir, filename)
 
+def generate_merged_filepath(dir: str, now: datetime) -> str:
+    return generate_output_filename(dir, 'merged', now)
+
 def get_api_output_dirpath(data_dirname: str = "", prefix: str = ""):
     return os.path.join(data_dirname, prefix, API_OUTPUT_DIRNAME)
 
+def get_processed_data_dirpath(data_dirname: str = "", prefix: str = ""):
+    return os.path.join(data_dirname, prefix, PROCESSED_DATA_DIRNAME)
+
+def get_timestamp_from_filename(filename: str) -> datetime:
+    fields = filename.split("-")
+    ts_str = fields[-3] + ' ' + fields[-2]
+    return datetime.strptime(ts_str, '%Y%m%d %H%M')
+
+def filename_from_filepath(filepath: str) -> str:
+    return os.path.basename(filepath)
 
 #------------------------------------------------------------------------------
 #
@@ -84,20 +104,6 @@ def setup_logging(name: str, now: datetime, debug=False, to_file = True):
 #
 #------------------------------------------------------------------------------
 
-def debug_info(print_info=PRINT_INFO, dump=DUMP_RESULTS):
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            result = func(*args, **kwargs)
-            if print_info:
-                logging.debug(f"{func.__name__}:")
-                logging.debug(result.info())
-                logging.debug(result.head())
-            if dump:
-                result.to_csv(f'{func.__name__}.csv', index=None)
-            return result
-        return wrapper
-    return decorator
-
 def timer(func):
     def wrapper(*args, **kwargs):
         global total_time
@@ -115,14 +121,6 @@ def timer(func):
 # File I/O functions
 #
 #------------------------------------------------------------------------------
-
-def remove_extension(filename):
-    filename, _ = os.path.splitext(filename)
-    return filename
-
-def replace_extension(filename, new_ext):
-    _, ext = os.path.splitext(filename)
-    return filename.replace(ext, new_ext)
 
 def split_file(input_filename, part_size = 42):
     """
@@ -204,6 +202,9 @@ def write_json_file(df, filename):
 def write_parquet_file(df, filename):
     df.to_parquet(filename, index=False)
 
+@timer
+def append_csv_file(df, filename, header: bool = False):
+    df.to_csv(filename, index=False, quoting=csv.QUOTE_STRINGS, decimal=".", mode='a', header=header)
 
 #------------------------------------------------------------------------------
 #
@@ -212,17 +213,19 @@ def write_parquet_file(df, filename):
 #------------------------------------------------------------------------------
 
 class Env(Enum):
-    API_KEY = "API_KEY"
-    PREFIX = "PREFIX"
-    STREETS_FILEPATH = "STREETS_FILEPATH"
-    TIMESTAMP_FROM = "TIMESTAMP_FROM"
-    TIMESTAMP_TO = "TIMESTAMP_TO"
-    INTERVAL = "INTERVAL"
-    PROCESS_DATA = "PROCESS_DATA"
+    API_KEY            = "API_KEY"
+    PREFIX             = "PREFIX"
+    STREETS_FILEPATH   = "STREETS_FILEPATH"
+    TIMESTAMP_FROM     = "TIMESTAMP_FROM"
+    TIMESTAMP_TO       = "TIMESTAMP_TO"
+    INTERVAL           = "INTERVAL"
+    PROCESS_DATA       = "PROCESS_DATA"
     ATTENUATION_MATRIX = "ATTENUATION_MATRIX"
-    STREET_PARAMS = "STREET_PARAMS"
-    FREQ_COEFFS = "FREQ_COEFFS"
-    CURVE_A = "CURVE_A"
+    STREET_PARAMS      = "STREET_PARAMS"
+    FREQ_COEFFS        = "FREQ_COEFFS"
+    CURVE_A            = "CURVE_A"
+    VEHICLES           = "VEHICLES"
+    MERGE              = "MERGE"
 
 class EnvManager:
     def __init__(self, filepath=".env"):

@@ -108,6 +108,8 @@ def collect_data(
         output_df = enrich_with_directions(api_key, input_df, now)
         write_csv_file(output_df, output_filename)
 
+        return output_filename
+
     except Exception as e:
         logging.error(f"Fatal error occurred: {e}")
         raise

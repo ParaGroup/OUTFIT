@@ -11,7 +11,7 @@ import os
 import re
 import argparse
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from utils import *
 from collect_data import collect_data
 from process import *
@@ -32,7 +32,7 @@ TABLE_WINDOW_HEIGHT_SPACE = 64
 LARGE_BUTTON_WIDTH  = 160
 LARGE_BUTTON_HEIGHT = 48
 
-FONT_SIZE    = 16
+FONT_SIZE    = 14
 SPACER       = 16
 LARGE_SPACER = 32
 
@@ -61,6 +61,7 @@ ATTENUATION_MATRIX_FIELDNAME = "Attenuation Matrix"
 STREET_PARAMS_FIELDNAME      = "Street Params"
 FREQ_COEFFS_FIELDNAME        = "Freq. Coeffs."
 CURVE_A_FIELDNAME            = "Curve A"
+VEHICLE_FIELDNAME           = "Vehicle"
 
 
 #------------------------------------------------------------------------------
@@ -197,19 +198,26 @@ def add_csv_field(window, form_sizer, font, label, field_evt, browse_evt, show_e
     _browse_button.SetFont(font)
     _browse_button.Bind(wx.EVT_BUTTON, browse_evt)
 
-    _show_button = wx.Button(window, label=SHOW_BUTTON_LABEL)
-    _show_button.SetFont(font)
-    _show_button.Bind(wx.EVT_BUTTON, show_evt)
+    _show_button = None
+    if show_evt:
+        _show_button = wx.Button(window, label=SHOW_BUTTON_LABEL)
+        _show_button.SetFont(font)
+        _show_button.Bind(wx.EVT_BUTTON, show_evt)
 
     _sizer = wx.BoxSizer(wx.HORIZONTAL)
     _sizer.Add(_field, 1, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, SPACER)
     _sizer.Add(_browse_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, SPACER)
-    _sizer.Add(_show_button, 0, wx.ALIGN_CENTER_VERTICAL)
+
+    if _show_button:
+        _sizer.Add(_show_button, 0, wx.ALIGN_CENTER_VERTICAL)
 
     setattr(window, control_name_label(label), _label)
     setattr(window, control_name_field(label), _field)
     setattr(window, control_name_browse_button(label), _browse_button)
-    setattr(window, control_name_show_button(label), _show_button)
+
+    if _show_button:
+        setattr(window, control_name_show_button(label), _show_button)
+
     setattr(window, control_name_sizer(label), _sizer)
 
     form_sizer.Add(_label, 0, wx.ALIGN_RIGHT | wx.ALIGN_CENTER_VERTICAL)
@@ -382,6 +390,13 @@ class ProcessingPanel(wx.Panel):
         add_csv_field(self, self.form_sizer, self.font, STREET_PARAMS_FIELDNAME, self.on_street_params_field_change, self.on_street_params_browse, self.on_street_params_show)
         add_csv_field(self, self.form_sizer, self.font, FREQ_COEFFS_FIELDNAME, self.on_freq_coeffs_field_change, self.on_freq_coeffs_browse, self.on_freq_coeffs_show)
         add_csv_field(self, self.form_sizer, self.font, CURVE_A_FIELDNAME, self.on_curve_a_field_change, self.on_curve_a_browse, self.on_curve_a_show)
+        add_csv_field(self, self.form_sizer, self.font, VEHICLE_FIELDNAME, self.on_vehicle_field_change, self.on_vehicle_browse, None)
+
+        # Checkbox for enabling/disabling merge
+        self.merge_checkbox = wx.CheckBox(self, label="Output results into a single file")
+        self.merge_checkbox.SetFont(self.font)
+
+        self.form_sizer.Add(self.merge_checkbox, 0, wx.ALIGN_LEFT | wx.ALIGN_CENTER_VERTICAL)
 
         self.box_sizer.Add(self.form_sizer, 1, wx.EXPAND | wx.ALL, SPACER)
         self.outer_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -441,6 +456,14 @@ class ProcessingPanel(wx.Panel):
         field = getattr(self, control_name_field(CURVE_A_FIELDNAME), None)
         on_file_show(self, field)
 
+    def on_vehicle_field_change(self, event):
+        path = getattr(self, control_name_field(VEHICLE_FIELDNAME), None).GetValue()
+        self.last_dir = os.path.dirname(path)
+
+    def on_vehicle_browse(self, event):
+        field = getattr(self, control_name_field(VEHICLE_FIELDNAME), None)
+        on_file_browse(self, field, self.last_dir)
+
 
 #------------------------------------------------------------------------------
 #
@@ -463,13 +486,6 @@ class SchedulerFrame(wx.Frame):
         self.dataCollectionPanel = DataCollectionPanel(self.panel, self.font)
         self.processingPanel = ProcessingPanel(self.panel, self.font)
 
-        self.main_sizer.Add(self.dataCollectionPanel, 0, wx.ALL | wx.EXPAND)
-        self.main_sizer.Add(self.processingPanel, 0, wx.ALL | wx.EXPAND)
-
-        self.outer_sizer = wx.BoxSizer(wx.VERTICAL)
-        self.outer_sizer.Add(self.main_sizer, 1, wx.ALL | wx.EXPAND, border=SPACER)
-        self.panel.SetSizer(self.outer_sizer)
-
         self.start_schedule_button = wx.Button(self.panel, label=START_SCHEDULE_BUTTON_LABEL)
         self.start_schedule_button.SetFont(self.font)
         self.start_schedule_button.SetMinSize(wx.Size(LARGE_BUTTON_WIDTH, LARGE_BUTTON_HEIGHT))
@@ -483,7 +499,15 @@ class SchedulerFrame(wx.Frame):
         self.buttons_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.buttons_sizer.Add(self.start_schedule_button, 1, wx.ALL | wx.EXPAND, SPACER)
         self.buttons_sizer.Add(self.remove_schedules_button, 1, wx.ALL | wx.EXPAND, SPACER)
+
+        self.main_sizer.Add(self.dataCollectionPanel, 0, wx.ALL | wx.EXPAND)
+        self.main_sizer.Add(self.processingPanel, 0, wx.ALL | wx.EXPAND)
         self.main_sizer.Add(self.buttons_sizer, 0, wx.EXPAND)
+
+        self.outer_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.outer_sizer.Add(self.main_sizer, 1, wx.ALL | wx.EXPAND, border=SPACER)
+        self.panel.SetSizer(self.outer_sizer)
+        self.Layout()
 
         self.main_sizer.Fit(self)
         current_size = self.GetSize()
@@ -506,12 +530,15 @@ class SchedulerFrame(wx.Frame):
             street_params_default = os.path.join(PARAMS_DIR, STREET_PARAMS_FILENAME)
             freq_coeffs_default = os.path.join(PARAMS_DIR, FREQ_COEFFS_FILENAME)
             curve_a_default = os.path.join(PARAMS_DIR, CURVE_A_FILENAME)
+            merge_default = False
 
             process_enabled = env.get_bool(Env.PROCESS_DATA, process_enabled_default)
             attenuation_matrix = f'{env.get(Env.ATTENUATION_MATRIX)}'
             street_params = f'{env.get(Env.STREET_PARAMS, street_params_default)}'
             freq_coeffs = f'{env.get(Env.FREQ_COEFFS, freq_coeffs_default)}'
             curve_a = f'{env.get(Env.CURVE_A, curve_a_default)}'
+            vehicles = f'{env.get(Env.VEHICLES)}'
+            merge = env.get_bool(Env.MERGE, merge_default)
 
             self.dataCollectionPanel.api_key_field.SetValue(api_key)
             self.dataCollectionPanel.prefix_field.SetValue(prefix)
@@ -527,6 +554,8 @@ class SchedulerFrame(wx.Frame):
             getattr(self.processingPanel, control_name_field(STREET_PARAMS_FIELDNAME)).SetValue(street_params)
             getattr(self.processingPanel, control_name_field(FREQ_COEFFS_FIELDNAME)).SetValue(freq_coeffs)
             getattr(self.processingPanel, control_name_field(CURVE_A_FIELDNAME)).SetValue(curve_a)
+            getattr(self.processingPanel, control_name_field(VEHICLE_FIELDNAME)).SetValue(vehicles)
+            self.processingPanel.merge_checkbox.SetValue(merge)
 
             logging.info("Environment variables loaded successfully.")
         except Exception as e:
@@ -549,6 +578,8 @@ class SchedulerFrame(wx.Frame):
             street_params = getattr(self.processingPanel, control_name_field(STREET_PARAMS_FIELDNAME)).GetValue()
             freq_coeffs = getattr(self.processingPanel, control_name_field(FREQ_COEFFS_FIELDNAME)).GetValue()
             curve_a = getattr(self.processingPanel, control_name_field(CURVE_A_FIELDNAME)).GetValue()
+            vehicles = getattr(self.processingPanel, control_name_field(VEHICLE_FIELDNAME)).GetValue()
+            merge = self.processingPanel.merge_checkbox.GetValue()
 
             env = EnvManager(filename)
             env.set(Env.API_KEY, api_key)
@@ -562,6 +593,8 @@ class SchedulerFrame(wx.Frame):
             env.set(Env.STREET_PARAMS, street_params)
             env.set(Env.FREQ_COEFFS, freq_coeffs)
             env.set(Env.CURVE_A, curve_a)
+            env.set(Env.VEHICLES, vehicles)
+            env.set_bool(Env.MERGE, merge)
 
             logging.info(f"Environment variables stored to {filename}")
         except Exception as e:
@@ -586,14 +619,15 @@ class SchedulerFrame(wx.Frame):
             streets = getattr(self.dataCollectionPanel, control_name_field(STREETS_FIELDNAME)).GetValue()
             time_from = self.dataCollectionPanel.start_time.GetValue()
             date_from = self.dataCollectionPanel.start_date.GetValue()
-            time_to = self.dataCollectionPanel.start_time.GetValue()
+            time_to = self.dataCollectionPanel.end_time.GetValue()
             date_to = self.dataCollectionPanel.end_date.GetValue()
-            interval = self.dataCollectionPanel.interval_field.GetValue()
+            interval = self.dataCollectionPanel.interval_slider.GetValue()
             process_data = self.processingPanel.processing_checkbox.GetValue()
             attenuation_matrix = getattr(self.processingPanel, control_name_field(ATTENUATION_MATRIX_FIELDNAME)).GetValue()
             street_params = getattr(self.processingPanel, control_name_field(STREET_PARAMS_FIELDNAME)).GetValue()
             freq_coeffs = getattr(self.processingPanel, control_name_field(FREQ_COEFFS_FIELDNAME)).GetValue()
             curve_a = getattr(self.processingPanel, control_name_field(CURVE_A_FIELDNAME)).GetValue()
+            vehicles = getattr(self.processingPanel, control_name_field(VEHICLE_FIELDNAME)).GetValue()
 
             start_time = wxDateTime_to_datetime(time_from)
             start_date = wxDateTime_to_datetime(date_from)
@@ -706,29 +740,49 @@ def execute_collect_data(env_filepath: str = ".env"):
         streets_filepath = str(env.get(Env.STREETS_FILEPATH))
         streets_dirname = os.path.dirname(streets_filepath)
         collected_data_dirpath = get_api_output_dirpath(streets_dirname)
-        processed_data_filepath = generate_output_filename(collected_data_dirpath, prefix, now)
-
+        processed_data_dirpath = get_processed_data_dirpath(streets_dirname)
+        processed_data_filepath = generate_output_filename(processed_data_dirpath, prefix, now)
 
         process_enabled_default = False
         street_params_default = os.path.join(PARAMS_DIR, STREET_PARAMS_FILENAME)
         freq_coeffs_default = os.path.join(PARAMS_DIR, FREQ_COEFFS_FILENAME)
         curve_a_default = os.path.join(PARAMS_DIR, CURVE_A_FILENAME)
+        merge_default = False
 
         process_enabled = env.get_bool(Env.PROCESS_DATA, process_enabled_default)
         attenuation_matrix = f'{env.get(Env.ATTENUATION_MATRIX)}'
         street_params = f'{env.get(Env.STREET_PARAMS, street_params_default)}'
         freq_coeffs = f'{env.get(Env.FREQ_COEFFS, freq_coeffs_default)}'
         curve_a = f'{env.get(Env.CURVE_A, curve_a_default)}'
+        vehicles_dirpath = f'{env.get(Env.VEHICLES)}'
+        merge = env.get_bool(Env.MERGE, merge_default)
 
         if not os.path.isdir(collected_data_dirpath):
             os.mkdir(collected_data_dirpath)
             logging.info(f"Created output directory: {collected_data_dirpath}")
 
         logging.info(f"Collecting data with prefix={prefix}, input={streets_filepath}, output={collected_data_dirpath}")
-        collect_data(api_key, streets_filepath, collected_data_dirpath, prefix, now)
+        collected_data_filepath = collect_data(api_key, streets_filepath, collected_data_dirpath, prefix, now)
 
         if process_enabled:
-            process_data(collected_data_dirpath, attenuation_matrix, street_params, freq_coeffs, curve_a, processed_data_filepath)
+            if not os.path.isdir(processed_data_dirpath):
+                os.mkdir(processed_data_dirpath)
+                logging.info(f"Created processed data directory: {processed_data_dirpath}")
+
+            if re.search(r'\.part\d+$', attenuation_matrix, re.IGNORECASE):
+                attenuation_matrix = replace_extension(attenuation_matrix, ".parquet")
+                logging.info(f"Using attenuation matrix file: {attenuation_matrix}")
+
+            if vehicles_dirpath and not os.path.isdir(vehicles_dirpath):
+                os.makedirs(vehicles_dirpath)
+                logging.info(f"Created vehicles directory: {vehicles_dirpath}")
+
+            logging.info(f"Processing data with input={collected_data_filepath}, output={processed_data_filepath}, vehicles={vehicles_dirpath}")
+            pipeline = Pipeline(attenuation_matrix,
+                    street_params,
+                    freq_coeffs,
+                    curve_a)
+            pipeline.execute(collected_data_filepath, processed_data_filepath, vehicles_dirpath, merge_default)
 
         return now
     except Exception as e:
@@ -737,15 +791,16 @@ def execute_collect_data(env_filepath: str = ".env"):
 
 if __name__ == "__main__":
     now = datetime.now()
-    setup_logging('collect_gui', now, to_file=False)
 
     args = parse_args()
+    is_env = args.env is not None
+    setup_logging('collect_gui', now, to_file=(not is_env))
 
-    if args.env:
+    if is_env:
         try:
             data_now = execute_collect_data(args.env)
-        except:
-            pass
+        except Exception as e:
+            logging.error(f"Data collection execution failed: {e}")
 
     else:
         app = wx.App(False)
