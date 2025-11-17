@@ -21,10 +21,15 @@ class Pipeline:
                  street_params_filepath: str,
                  freq_coeffs_filepath: str,
                  curveA_filepath: str):
+        print("Initializing Pipeline...")
         self.setup_attenuation_matrix(attenuation_matrix_filepath)
+        print("Attenuation matrix loaded.")
         self.setup_street_params(street_params_filepath)
+        print("Street parameters loaded.")
         self.setup_freq_coeffs(freq_coeffs_filepath)
+        print("Frequency coefficients loaded.")
         self.setup_curveA(curveA_filepath)
+        print("Curve A loaded.")
 
     @timer
     def setup_attenuation_matrix(self, filepath: str):
@@ -257,7 +262,7 @@ class Pipeline:
         if vehicles_path and os.path.isdir(vehicles_path):
             vehicles_filepath = os.path.join(vehicles_path, 'vehicles-' + filename_from_filepath(input_filepath))
 
-        input_df = read_file(input_filepath)
+        input_df = self.read_data(input_filepath)
         output_df = self.run(input_df, vehicles_filepath)
 
         ts = get_timestamp_from_filename(input_filepath)
@@ -281,7 +286,7 @@ class Pipeline:
 
             logging.info(f'Processing: f{input_filepath}')
 
-            input_df = read_file(input_filepath)
+            input_df = self.read_data(input_filepath)
 
             vehicles_filepath = vehicles_dirpath
             if vehicles_dirpath and os.path.isdir(vehicles_dirpath):
