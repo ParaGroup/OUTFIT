@@ -104,9 +104,13 @@ class Pipeline:
         self.curveA_df = sanitize_df(self.curveA_df, CURVEA_SCHEMA)
 
     @timer
-    def read_data(self, filepath):
+    def read_data(self, filepath, override_highway: str = '') -> pd.DataFrame:
         df = read_file(filepath)
         df = sanitize_df(df, DATA_SCHEMA)
+
+        if override_highway:
+            df['highway'] = override_highway
+
         return df
 
     @timer
@@ -254,7 +258,8 @@ class Pipeline:
     def execute_file(self,
                      input_filepath: str,
                      output_filepath: str,
-                     vehicles_path: str = ''):
+                     vehicles_path: str = '',
+                     override_highway: str = ''):
 
         logging.info(f'Processing file: f{input_filepath}')
 
@@ -262,7 +267,7 @@ class Pipeline:
         if vehicles_path and os.path.isdir(vehicles_path):
             vehicles_filepath = os.path.join(vehicles_path, 'vehicles-' + filename_from_filepath(input_filepath))
 
-        input_df = self.read_data(input_filepath)
+        input_df = self.read_data(input_filepath, override_highway)
         output_df = self.run(input_df, vehicles_filepath)
 
         ts = get_timestamp_from_filename(input_filepath)
@@ -274,7 +279,8 @@ class Pipeline:
                     input_dirpath: str,
                     output_dirpath: str,
                     vehicles_dirpath: str = '',
-                    merge: bool = False):
+                    merge: bool = False,
+                    override_highway: str = ''):
 
         files = sorted(glob.glob("*.csv", root_dir=input_dirpath))
         merged_ts = get_timestamp_from_filename(files[0])
@@ -286,7 +292,7 @@ class Pipeline:
 
             logging.info(f'Processing: f{input_filepath}')
 
-            input_df = self.read_data(input_filepath)
+            input_df = self.read_data(input_filepath, override_highway)
 
             vehicles_filepath = vehicles_dirpath
             if vehicles_dirpath and os.path.isdir(vehicles_dirpath):
@@ -306,7 +312,8 @@ class Pipeline:
                 input_path: str,
                 output_path: str,
                 vehicles_path: str = '',
-                merge: bool = False):
+                merge: bool = False,
+                override_highway: str = ''):
 
         if not input_path:
             message = "input_path is empty!"
@@ -325,7 +332,7 @@ class Pipeline:
                 logging.error(message)
                 raise RuntimeError(message)
 
-            self.execute_file(input_path, output_path, vehicles_path)
+            self.execute_file(input_path, output_path, vehicles_path, override_highway)
 
         elif os.path.isdir(input_path):
             if not vehicles_path:
@@ -339,7 +346,7 @@ class Pipeline:
             if not os.path.exists(vehicles_path):
                 os.mkdir(vehicles_path)
 
-            self.execute_dir(input_path, output_path, vehicles_path, merge)
+            self.execute_dir(input_path, output_path, vehicles_path, merge, override_highway)
 
         else:
             message = f"input_path ({input_path}) is not a file/directory!"
@@ -352,14 +359,15 @@ def parse_args():
     Parse command-line arguments.
     """
     parser = argparse.ArgumentParser(description="...") # TODO
-    parser.add_argument('-i', '--input',         required=True,  help="Path to input file or directory. If it is a directory, all CSV files will be processed. See `--merge` to output a single file.")
-    parser.add_argument('-o', '--output',        required=True,  help="Name of output file or directory. It can be a directory only when `--input` is a directory and `--merge` is not set.")
-    parser.add_argument('-a', '--matrix',        required=True,  help="Path to the Attenuation Matrix.")
-    parser.add_argument('-s', '--street_params', required=False, help="Path to the Street Parameters file.")
-    parser.add_argument('-f', '--freq_coeffs',   required=False, help="Path to the Frequency Coefficients file.")
-    parser.add_argument('-c', '--curveA',        required=False, help="Path to the Curve A file.")
-    parser.add_argument('-v', '--vehicles',      required=False, help="Name of output file or directory for vehicles data. If `--input` is a directory, it must be a directory too.")
-    parser.add_argument('-m', '--merge',         required=False, help="Merge all output to a single file.", action='store_true')
+    parser.add_argument('-i', '--input',            required=True,  help="Path to input file or directory. If it is a directory, all CSV files will be processed. See `--merge` to output a single file.")
+    parser.add_argument('-o', '--output',           required=True,  help="Name of output file or directory. It can be a directory only when `--input` is a directory and `--merge` is not set.")
+    parser.add_argument('-a', '--matrix',           required=True,  help="Path to the Attenuation Matrix.")
+    parser.add_argument('-s', '--street_params',    required=False, help="Path to the Street Parameters file.")
+    parser.add_argument('-f', '--freq_coeffs',      required=False, help="Path to the Frequency Coefficients file.")
+    parser.add_argument('-c', '--curveA',           required=False, help="Path to the Curve A file.")
+    parser.add_argument('-v', '--vehicles',         required=False, help="Name of output file or directory for vehicles data. If `--input` is a directory, it must be a directory too.")
+    parser.add_argument('-x', '--override_highway', required=False, help="Override 'highway' field in input data with the provided value.")
+    parser.add_argument('-m', '--merge',            required=False, help="Merge all output to a single file.", action='store_true')
     return parser.parse_args()
 
 
@@ -392,6 +400,6 @@ if __name__ == "__main__":
                             street_params_filepath,
                             freq_coeffs_filepath,
                             curveA_filepath)
-        pipeline.execute(input_path, output_path, vehicles_path, is_merge)
+        pipeline.execute(input_path, output_path, vehicles_path, is_merge, args.override_highway)
     except Exception as e:
         logging.error(f"Pipeline error: {e}")
